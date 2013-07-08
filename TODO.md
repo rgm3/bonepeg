@@ -1,11 +1,13 @@
 TODO
 ====
+- [ ] flag for mirroring image
 - [ ] build peggyFrame (header + 13x13 bytes, 2 pixels per byte)
 - [ ] i2c output of peggyFrame
 - [ ] GetOpt / Boost.Program_options
 - [ ] check about inline utf8
 - [ ] learn c++
-- [ ] document beaglebone to peggy circuit -- 5.6k pullup resistors on P9_19 and P9_20, BiDi level converter.
+- [ ] document beaglebone to peggy circuit -- i2c setup w/ 5.6k pullup resistors on P9_19 and P9_20, BiDi level converter.
+- [ ] v4l2-ctl examples
 
 More unicode / ASCII / ANSI fun
 ===============================
