@@ -23,7 +23,7 @@
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 #include <locale.h>
-//#include <ncurses.h>
+#include <ncurses.h>
 
 // Capture size from camera
 #define WIDTH 800
@@ -44,12 +44,10 @@ Size peggySize = Size(25, 25);
  * signal handler
  */
 void my_handler(int s) {
-    //endwin(); TODO ncurses
-    printf("\x1B[?25h"); // show cursor
 
-    // print message and restore prompt under video
-    printf("\x1B[0m\x1B[%d;1H\nCaught signal %d\n", peggySize.height, s);
+    printw("Caught signal %d\n", s);
 
+    endwin();
     exit(1); 
 }
 
@@ -84,17 +82,12 @@ int main(int argc, char** argv)
     Mat frame, cropped, grey, thumb;
     Rect squareInCenter((WIDTH - HEIGHT) / 2, 0, HEIGHT, HEIGHT);
     
-    
-    // [2J   = Clear screen
-    // [1;1H = [;H = put cursor at upper left (position 1,1)
-    // [?25l = Hide cursor
-    printf("\x1B[2J\x1B[;H\x1B[?25l");
-
-    //initscr(); //TODO - ncurses
-    //cbreak();
-    //noecho();
-    //start_color();
-    //refresh();
+    // ncurses setup 
+    initscr();
+    cbreak();
+    noecho();
+    start_color();
+    refresh();
     
     /*
      * Main webcam capture loop
@@ -125,20 +118,17 @@ int main(int argc, char** argv)
 
     }//capture loop
 
-    //endwin(); TODO ncurses
+    endwin();
 
     return 0;
 }
 
 /* Prints the thumbnail to the terminal
- * assumes utf8 and 256 color support
- * TODO -- detect 256 color, utf8, provide fallbacks
  */
 void printThumbnail(Mat thumb) {
-    //char utf8boxes[] = "\xE2\x96\x88\xE2\x96\x88"; // two FULL BLOCK U+2588 in utf8
     // 16 characters arranged (roughly) in order of increasing density (brightness)
-    //const char palette16[] = " .'^\":;!i?ZM#%@";
-    //const std::string palette16 (" .'^\":;!i?ZM#%@");
+    //const char palette16[] = " .'^\":;!i?ZM&#%@";
+    const std::string palette16 (" .'^\":;!i?ZM&#%@");
 
     // These ramps suggested by Paul Bourke [3]
     //char palette10[] = " .:-=+*#%@";
@@ -154,9 +144,6 @@ void printThumbnail(Mat thumb) {
          utf8 = true,
          hicolor = true;
 
-    // Move cursor to row 1, column 1
-    printf("\x1B[;H");
-
     for(int i = 0; i < rows; i++ ) {
         for(int j = 0; j < cols; j++ ) {
 
@@ -167,18 +154,14 @@ void printThumbnail(Mat thumb) {
                 // scaled across the 26 grey levels in the default ANSI 256 palette
                 // extended ANSI colors are 0-255. 231 = #FFFFFF, 232 = #080808, 255 = #EEEEEE
                 // To approximate peggy display:  grey82ansi(rawGrey, 16)
-                ansiGrey = grey82ansi(rawGrey);
-                printf("\x1B[48;5;%dm  ", ansiGrey);
-
-                // TODO ncurses
-                //mvprintw(0, j, "\x1B[48;5;%dm  ", ansiGrey);
-                //mvprintw(0, j, "%c", palette16.at(rawGrey >> 4));
+                //ansiGrey = grey82ansi(rawGrey);
+               
+               	char ch = palette16.at(rawGrey >> 4);
+                mvprintw(i, j*2, "%c%c", ch, ch);
             }
         }
-
-        printf("\n");
     }
-    //refresh();
+    refresh();
 }
 
 // Converts an 8-bit greyscale value to one of the 26 ANSI grey levels.
