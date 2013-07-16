@@ -16,3 +16,14 @@ Links
 =====
 *  http://www.evilmadscientist.com/source/Peggy2_RecvTWI.pde
 *  http://www.planetclegg.com/projects/Twi2Peggy.html
+*  http://docs.opencv.org/_downloads/how_to_scan_images.cpp 
+
+v4l2-ctl - Listing devices, capabilities, and settings
+======================================================
+
+To display all available v4l2 information:
+   # v4l2-ctl --all
+
+Formats that the device can provide:
+   # v4l2-ctl --list-formats
+
