@@ -13,7 +13,7 @@ LDFLAGS += $(shell pkg-config --libs ncurses)
 all: bonepeg
 
 bonepeg: bonepeg.cpp
-	$(CC) $(CFLAGS) $(LDFLAGS) bonepeg.cpp -o bonepeg
+	$(CC) $(CFLAGS) bonepeg.cpp $(LDFLAGS) -o bonepeg
 
 clean:
 	@rm -rf *.o bonepeg
