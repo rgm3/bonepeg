@@ -14,8 +14,19 @@ A re-implementation of the method used in [Video Peggy in action] [4] without th
 
 Building
 ========
-Requires the OpenCV libraries.  On Mac OS X with macports:
-  sudo port install opencv
+Requires the OpenCV libraries.
+
+## On Mac OS X with macports:
+```
+    # sudo port install opencv
+    # make
+```
+
+## Linux Mint
+```
+    # sudo apt-get install g++ libncurses5-dev libopencv-dev
+    # make
+```
 
 Links
 =====
