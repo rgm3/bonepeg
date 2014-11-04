@@ -12,6 +12,22 @@ A re-implementation of the method used in [Video Peggy in action] [4] without th
    [4]: http://www.evilmadscientist.com/2009/video-peggy-in-action/
    [5]: http://ascii.io/a/3904
 
+Building
+========
+Requires the OpenCV libraries.
+
+## On Mac OS X with macports:
+```
+    # sudo port install opencv
+    # make
+```
+
+## Linux Mint
+```
+    # sudo apt-get install g++ libncurses5-dev libopencv-dev
+    # make
+```
+
 Links
 =====
 *  http://www.evilmadscientist.com/source/Peggy2_RecvTWI.pde

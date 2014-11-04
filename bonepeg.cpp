@@ -39,7 +39,10 @@ uint8_t grey82ansi(uint8_t grey8, uint8_t paletteSize);
 int mapVal(int value, int fromLow, int fromHigh, int toLow, int toHigh);
 
 // Globals
-Size peggySize = Size(25, 25);
+// 12pt Monaco blocks are 7x17, output pixels are using two spaces side-by-side for better aspect ratio.
+int TERM_WIDTH = 55;
+int TERM_HEIGHT = (TERM_WIDTH * 14) / 17;
+Size peggySize = Size(TERM_WIDTH, TERM_HEIGHT);
 
 /*
  * signal handler
@@ -80,6 +83,9 @@ int main(int argc, char** argv)
 
     // Matrices for captured frame, grey frame, and thumbnail
     Mat frame, cropped, grey, thumb;
+
+    // Capture area is not the full frame, which may be 4:3 or 16:9 aspect, but the square in the middle.
+    // Assumes that width > height
     Rect squareInCenter((WIDTH - HEIGHT) / 2, 0, HEIGHT, HEIGHT);
     
     // ncurses setup 
