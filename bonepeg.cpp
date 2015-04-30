@@ -41,12 +41,11 @@ using namespace cv;
 
 // Declared functions
 void fillColorLookupTable();
-void printColorThumbnail(Mat, Size);
+void printImage(Mat);
 void restoreTerminal();
 void readKeys();
 uint8_t grey2ansi(uint8_t grey8);
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
-//uint8_t rgb2ansi(uint8_t red, uint8_t green, uint8_t blue);
 uint8_t rgb2ansi(cv::Vec3b);
 
 // Globals
@@ -55,13 +54,16 @@ uint8_t CLUT[6][6][6]; // color lookup table
 uint8_t GREYS[24];
 bool g_mirror = true;
 
-volatile sig_atomic_t stop;
+volatile sig_atomic_t gStop = 0;
+volatile sig_atomic_t gTermResized = 0;
 
-/*
- * signal handler
- */
-void my_handler(int s) {
-    stop = 1;
+void handle_interrupt(int sig) {
+    gStop = 1;
+}
+
+void handle_winch(int sig)
+{
+    gTermResized = 1;
 }
 
 void restoreTerminal() {
@@ -75,10 +77,18 @@ int main(int argc, char** argv)
 
     // Trap CTRL-c
     struct sigaction sigIntHandler;
-    sigIntHandler.sa_handler = my_handler;
+    sigIntHandler.sa_handler = handle_interrupt;
     sigemptyset(&sigIntHandler.sa_mask);
     sigIntHandler.sa_flags = 0;
     sigaction(SIGINT, &sigIntHandler, NULL);
+
+    // Handle window resize
+    struct sigaction sa;
+    // memset(&sa, 0, sizeof(struct sigaction));
+    sa.sa_handler = handle_winch;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGWINCH, &sa, NULL);
 
     // set locale
     if (!setlocale(LC_CTYPE, "")) {
@@ -116,25 +126,15 @@ int main(int argc, char** argv)
 
     int trows, tcols;
     getmaxyx(stdscr,trows,tcols);
-
-    float char_aspect = 7.0f / 17; // 12pt Monaco blocks are 7x17
-    int TERM_WIDTH = tcols;
-    int TERM_HEIGHT = trows;
-    int TERM_EFFECTIVE_HEIGHT = (1.0f / char_aspect) * trows;
-    float term_aspect = (float) TERM_WIDTH / TERM_EFFECTIVE_HEIGHT;
-    float cam_aspect = (float) CAM_WIDTH / CAM_HEIGHT;
     Size termSize  = Size(tcols, trows);
     Size peggySize = Size(25, 25);
 
-    // Matrices for captured frame (full res), center cutout / cropped, grey frame, and thumbnail (resized)
-    Mat frame, cropped, thumb;
+    float char_aspect = 4.0f / 9; // 12pt Monaco blocks are 4:9 (.44) or maybe 7:17 (.41)
+    int effective_trows = (1.0f / char_aspect) * trows;
+    float term_aspect = (float) tcols / effective_trows;
+    float cam_aspect = (float) CAM_WIDTH / CAM_HEIGHT;
 
-    // Capture area is not the full frame, which may be 4:3 or 16:9 aspect, but the square in the middle.
-    // Assumes that width > height
-    //Rect squareInCenter((CAM_WIDTH - CAM_HEIGHT) / 2, 0, CAM_HEIGHT, CAM_HEIGHT);
-    
-    // Crop a rectangle matching the terminal aspect ratio
-    // Assume camera capture aspect > 1
+    // Crop a rectangle matching the effective terminal aspect ratio out of the camera capture
     int cropheight, cropwidth, x, y;
     if ( term_aspect > cam_aspect) {
       // wide: more columns than rows
@@ -156,7 +156,7 @@ int main(int argc, char** argv)
     printw("Cropping %dx%d at (%d,%d). aspect = %f", cropwidth, cropheight, x, y, term_aspect);
     refresh();
     getch();
-    //stop = true;
+    //gStop = true;
 */
 
     // What is this constructor and variable asignment magic
@@ -177,10 +177,9 @@ int main(int argc, char** argv)
      * Main webcam capture loop
      */
 
-    int cc = 0;
-    Mat stretched = Mat(cropwidth, cropheight, CV_8UC3);
-    thumb = Mat(termSize.width, termSize.height, CV_8UC3);
-    while (!stop) {
+    Mat thumb = Mat(termSize.width, termSize.height, CV_8UC3);
+    Mat frame, cropped;
+    while (!gStop) {
         // capture frame from camera or bail
         capture >> frame;
 
@@ -196,10 +195,12 @@ mvprintw(1, 1, "cropped = %dx%d\n", cropped.cols, cropped.rows);
 refresh();
 */
 
-        // shrink to terminal size
-        resize(cropped, thumb, termSize, 0, 0, INTER_LINEAR);
+        // shrink to terminal size (squishes the vertical by character aspect ratio)
+        Mat blurred = cropped.clone();
+        GaussianBlur( cropped, blurred, Size(3,3), 0, 0 );
+        resize(blurred, thumb, termSize, 0, 0, INTER_LINEAR);
 
-        printColorThumbnail(thumb, termSize);
+        printImage(thumb);
 
         refresh();
 
@@ -225,7 +226,7 @@ void readKeys() {
       break;
     case 'q':
     case 27: // ESC
-      my_handler(SIGINT);
+      handle_interrupt(SIGINT);
       break;
     default:
       ;
@@ -243,18 +244,23 @@ void fillColorLookupTable() {
   }
 }
 
-void printColorThumbnail(Mat thumb, Size term) {
+void printImage(Mat thumb) {
     
     uint8_t paletteIdx = 0, // 0-15
-            rows = term.height,
-            cols = term.width;
+            rows = thumb.rows,
+            cols = thumb.cols;
 
     for(int i = 0; i < rows; i++ ) {
         for(int j = 0; j < cols; j++ ) {
 
             int column = g_mirror ? cols - 1 - j : j;
+
             paletteIdx = rgb2ansi(thumb.at<cv::Vec3b>(i,column));
-            if ( paletteIdx < 254 ) { paletteIdx++; }
+
+            if ( paletteIdx < 254 ) {
+              paletteIdx++;  // fixme: off-by-one error setting up color pairs?
+            }
+
             attron(COLOR_PAIR(paletteIdx));
             mvprintw(i, j, " ");
             attroff(COLOR_PAIR(paletteIdx));
@@ -271,7 +277,7 @@ uint8_t grey2ansi(uint8_t grey8) {
 // size of the palette.  26 ANSI grey levels are available, including black and white.
 // color index 16 = black, 231 = white, 232 - 255 dark (#080808) to light (#EEEEEE) ramp 
 //
-// Wanring: the 256 colors in the palette can be redefined.
+// Note: the 256 colors in the palette could be redefined.
 //
 // @param grey8         an 8-bit grey value.  Gets scaled to 0-paletteSize.
 // @param paletteSize   The number of greys in the palette.
