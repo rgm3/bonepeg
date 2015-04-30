@@ -1,5 +1,8 @@
 /* bonepeg.cpp
  *
+ * Having too much fun learning C and playing with ascii cam to implement peggy output yet.
+ * Considering renaming to "tcam."
+ *
  * A program to stream video from a webcam connected to the BeagleBone to a Peggy 2.
  * With in-terminal preview, ASCII-cam style.
  * For now, needs 256-color capable terminal.
@@ -22,39 +25,54 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
+#include <stdbool.h>
 #include <locale.h>
 #include <ncurses.h>
 
 // Capture size from camera
-#define WIDTH 800
-#define HEIGHT 600
+#define CAM_WIDTH 800
+#define CAM_HEIGHT 600
 
-//using namespace std;
+#undef max
+#undef min
+
+using namespace std;
 using namespace cv;
 
 // Declared functions
-void printThumbnail(Mat thumb);
-uint8_t grey82ansi(uint8_t grey8);
-uint8_t grey82ansi(uint8_t grey8, uint8_t paletteSize);
-int mapVal(int value, int fromLow, int fromHigh, int toLow, int toHigh);
+void fillColorLookupTable();
+void printColorThumbnail(Mat, Size);
+void restoreTerminal();
+void readKeys();
+uint8_t grey2ansi(uint8_t grey8);
+uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
+//uint8_t rgb2ansi(uint8_t red, uint8_t green, uint8_t blue);
+uint8_t rgb2ansi(cv::Vec3b);
 
 // Globals
-// 12pt Monaco blocks are 7x17, output pixels are using two spaces side-by-side for better aspect ratio.
-int TERM_WIDTH = 55;
-int TERM_HEIGHT = (TERM_WIDTH * 14) / 17;
-Size peggySize = Size(TERM_WIDTH, TERM_HEIGHT);
+uint8_t INCS[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
+uint8_t CLUT[6][6][6]; // color lookup table
+uint8_t GREYS[24];
+bool g_mirror = true;
+
+volatile sig_atomic_t stop;
 
 /*
  * signal handler
  */
 void my_handler(int s) {
+    stop = 1;
+}
+
+void restoreTerminal() {
+    nocbreak();
+    echo();
     endwin();
-    printf("Caught signal %d\n", s);
-    exit(1); 
 }
 
 int main(int argc, char** argv)
 {
+
     // Trap CTRL-c
     struct sigaction sigIntHandler;
     sigIntHandler.sa_handler = my_handler;
@@ -64,155 +82,202 @@ int main(int argc, char** argv)
 
     // set locale
     if (!setlocale(LC_CTYPE, "")) {
-        // std::cerr << "Can't set the specified locale! Check LANG, LC_CTYPE, LC_ALL." << std::endl; // any practical difference?
+        // cerr << "Can't set the specified locale! Check LANG, LC_CTYPE, LC_ALL." << endl; // any practical difference?
         fprintf(stderr, "Can't set the specified locale! "
                 "Check LANG, LC_CTYPE, LC_ALL.\n");
         return 1;
     }
 
+    fillColorLookupTable();
+
     // prints "VIDIOC_QUERYMENU: Invalid argument" on stderr a few times with this OpenCV, but works fine
     // Seems to be an issue with OpenCV querying device capabilities
     VideoCapture capture(0);
-    capture.set(CV_CAP_PROP_FRAME_WIDTH, WIDTH);
-    capture.set(CV_CAP_PROP_FRAME_HEIGHT, HEIGHT);
+    capture.set(CV_CAP_PROP_FRAME_WIDTH, CAM_WIDTH);
+    capture.set(CV_CAP_PROP_FRAME_HEIGHT, CAM_HEIGHT);
 
     if (!capture.isOpened()) {
-        std::cout << "Failed to connect to the camera." << std::endl;
-        return 2;
+        cout << "Failed to connect to the camera." << endl;
+        return -1;
     }
 
-    // Matrices for captured frame, grey frame, and thumbnail
-    Mat frame, cropped, grey, thumb;
+    
+    initscr();
+    start_color(); // init 8 basic colors, and COLORS / COLOR_PAIRS vars
+    use_default_colors();
+
+    // 88 colors would probably look pretty good in color
+    // 8 is probably enough for greyscale
+    if ( COLORS < 256 ) {
+      restoreTerminal();
+      printf("Terminal only supports %d colors.  Maybe \"export TERM=xterm-256color.\"\n", COLORS);
+      return -1;
+    }
+
+    int trows, tcols;
+    getmaxyx(stdscr,trows,tcols);
+
+    float char_aspect = 7.0f / 17; // 12pt Monaco blocks are 7x17
+    int TERM_WIDTH = tcols;
+    int TERM_HEIGHT = trows;
+    int TERM_EFFECTIVE_HEIGHT = (1.0f / char_aspect) * trows;
+    float term_aspect = (float) TERM_WIDTH / TERM_EFFECTIVE_HEIGHT;
+    float cam_aspect = (float) CAM_WIDTH / CAM_HEIGHT;
+    Size termSize  = Size(tcols, trows);
+    Size peggySize = Size(25, 25);
+
+    // Matrices for captured frame (full res), center cutout / cropped, grey frame, and thumbnail (resized)
+    Mat frame, cropped, thumb;
 
     // Capture area is not the full frame, which may be 4:3 or 16:9 aspect, but the square in the middle.
     // Assumes that width > height
-    Rect squareInCenter((WIDTH - HEIGHT) / 2, 0, HEIGHT, HEIGHT);
+    //Rect squareInCenter((CAM_WIDTH - CAM_HEIGHT) / 2, 0, CAM_HEIGHT, CAM_HEIGHT);
     
-    // ncurses setup 
-    initscr();
-    cbreak();
-    noecho();
-    start_color();
-    use_default_colors();
-    curs_set(0);
-
-    // Setup a palette of 256 shades of grey
-    // TODO check COLORS >= 256 && if( can_change_color() )
-    int mapped;
-    for (int i = 0; i < 256; i++) {
-        mapped = mapVal(i, 0, 255, 0, 1000);
-        init_color(i, mapped, mapped, mapped);
-        init_pair(i, COLOR_BLACK, i);
+    // Crop a rectangle matching the terminal aspect ratio
+    // Assume camera capture aspect > 1
+    int cropheight, cropwidth, x, y;
+    if ( term_aspect > cam_aspect) {
+      // wide: more columns than rows
+      cropwidth  = CAM_WIDTH;
+      cropheight = CAM_WIDTH / term_aspect;
+    } else if ( term_aspect < cam_aspect ) {
+      // tall: more rows than columns
+      cropheight = CAM_HEIGHT;
+      cropwidth  = term_aspect * cropheight;
+    } else {
+      // square: camera aspect > 1 so use the smaller dimension as bounds
+      cropwidth  = CAM_HEIGHT; 
+      cropheight = CAM_HEIGHT;
     }
+    x = (CAM_WIDTH - cropwidth ) / 2;
+    y = (CAM_HEIGHT - cropheight) / 2;
+
+/*
+    printw("Cropping %dx%d at (%d,%d). aspect = %f", cropwidth, cropheight, x, y, term_aspect);
+    refresh();
+    getch();
+    //stop = true;
+*/
+
+    // What is this constructor and variable asignment magic
+    Rect cropArea(x, y, cropwidth, cropheight);
+
+    cbreak();              // Don't buffer until newline
+    noecho();              // Don't echo inputs to screen
+    curs_set(0);           // turn off cursor
+    nodelay(stdscr, true); // don't wait on key inputs
+
+    for (int i = 0; i < COLORS; i++){
+      init_pair(i + 1, -1, i);
+    }
+
+    refresh();
     
     /*
      * Main webcam capture loop
      */
-    for(;;)
-    {
+
+    int cc = 0;
+    Mat stretched = Mat(cropwidth, cropheight, CV_8UC3);
+    thumb = Mat(termSize.width, termSize.height, CV_8UC3);
+    while (!stop) {
         // capture frame from camera or bail
         capture >> frame;
 
         if (frame.empty()) {
-            std::cout << "Failed to capture an image" << std::endl;
-            return -1;
+            cout << "Failed to capture an image" << endl;
+            break;
         }
 
-        // Square center crop, chop width to match height, equals bits from both sides
-        cropped = frame(squareInCenter);
+        // center crop full res area matching terminal aspect ratio
+        cropped = frame(cropArea);
+/*
+mvprintw(1, 1, "cropped = %dx%d\n", cropped.cols, cropped.rows);
+refresh();
+*/
 
-        // Convert the region of interest into greyscale
-        cvtColor(cropped, grey, CV_BGR2GRAY);
+        // shrink to terminal size
+        resize(cropped, thumb, termSize, 0, 0, INTER_LINEAR);
 
-        // Resize greyscale image into peggy-sized thumbnail, 8-bit unsigned matrix of grey level
-        thumb = Mat(peggySize.width, peggySize.height, CV_8U);
-        resize(grey, thumb, peggySize, 0, 0, INTER_LANCZOS4);
+        printColorThumbnail(thumb, termSize);
 
-        //std::cout << "Thumb = " << std::endl << thumb << std::endl << std::endl; // debug
-        printThumbnail(thumb);
         refresh();
 
+        readKeys();
 
     }//capture loop
 
-    curs_set(1);
-    endwin();
+    capture.release();
+
+    restoreTerminal();
 
     return 0;
 }
 
-/* Prints the thumbnail to the terminal
- */
-void printThumbnail(Mat thumb) {
-    // 16 characters arranged (roughly) in order of increasing density (brightness)
-    //const char palette[] = " .'^\":;!i?ZM&#%@";
-    //const string palette16 (" .'^\":;!i?ZM&#%@");
+void readKeys() {
+  int ch = getch();
+  if ( ch == ERR ) {
+    return;
+  }
+  switch (ch) {
+    case 'm':
+      g_mirror = !g_mirror;
+      break;
+    case 'q':
+    case 27: // ESC
+      my_handler(SIGINT);
+      break;
+    default:
+      ;
+  }
+}
 
-    // These ramps suggested by Paul Bourke [3]
-    //const char palette[] = " .:-=+*#%@";
-    //const char palette[] = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-    //int paletteSize = strlen(palette);
+void fillColorLookupTable() {
+  for (int green = 0; green < 6; green++) {
+    for (int red = 0; red < 6; red++) {
+      for (int blue = 0; blue < 6; blue++) {
+        int paletteIdx = 16 + (red * 36) + (green * 6) + blue;
+        CLUT[green][red][blue] = paletteIdx;
+      }
+    }
+  }
+}
 
-    uint8_t rawGrey = 0, // 0-15
-            ansiGrey = 0,
-            rows = thumb.rows,
-            cols = thumb.cols;
-
-    // options
-    bool mirror = true,
-         utf8 = true,
-         hicolor = true;
+void printColorThumbnail(Mat thumb, Size term) {
+    
+    uint8_t paletteIdx = 0, // 0-15
+            rows = term.height,
+            cols = term.width;
 
     for(int i = 0; i < rows; i++ ) {
         for(int j = 0; j < cols; j++ ) {
 
-            rawGrey = mirror ? thumb.at<uchar>(i, (cols - 1) - j) : thumb.at<uchar>(i, j);
-
-            if (hicolor) {
-                // Print two space characters with ansi grey background color
-                // scaled across the 26 grey levels in the default ANSI 256 palette
-                // extended ANSI colors are 0-255. 231 = #FFFFFF, 232 = #080808, 255 = #EEEEEE
-                // To approximate peggy display:  grey82ansi(rawGrey, 16)
-                //ansiGrey = grey82ansi(rawGrey);
-
-                // index in brightness ramp char array
-                //int idx = mapByte(rawGrey, 0, paletteSize - 1);
-                //char ch = palette[idx];
-                //mvprintw(i, j*2, "%c%c", ch, ch);
-                attron(COLOR_PAIR(rawGrey));
-                mvprintw(i, j*2, "  ");
-            }
+            int column = g_mirror ? cols - 1 - j : j;
+            paletteIdx = rgb2ansi(thumb.at<cv::Vec3b>(i,column));
+            if ( paletteIdx < 254 ) { paletteIdx++; }
+            attron(COLOR_PAIR(paletteIdx));
+            mvprintw(i, j, " ");
+            attroff(COLOR_PAIR(paletteIdx));
         }
     }
 }
 
-// Map a value from one range to another.  Works with negative numbers too.
-// assert(mapVal(500, 0, 1000, 50, 100) == 75)
-// assert(mapVal(2, 0, 10, -100, -200) == -120)
-// assert(mapVal(10, 0, 0, 0, 0) == 0)
-int mapVal(int value, int fromLow, int fromHigh, int toLow, int toHigh) {
-    return (value - fromLow) * (toHigh - toLow) / (fromHigh - fromLow) + toLow;
-}
-// Map a uint8_t (0-255) to a new range
-int mapByte(uint8_t value, int low, int high) {
-    return mapVal(value, 0, 255, low, high);
-}
-
 // Converts an 8-bit greyscale value to one of the 26 ANSI grey levels.
-uint8_t grey82ansi(uint8_t grey8) {
-    return grey82ansi(grey8, 26);
+uint8_t grey2ansi(uint8_t grey8) {
+    return grey2ansi(grey8, 26);
 }
 
 // Returns the best ANSI color code for the given 8-bit grey value, within the
 // size of the palette.  26 ANSI grey levels are available, including black and white.
 // color index 16 = black, 231 = white, 232 - 255 dark (#080808) to light (#EEEEEE) ramp 
 //
-// Warning: the 256 colors in the palette can be redefined.
+// Wanring: the 256 colors in the palette can be redefined.
+//
 // @param grey8         an 8-bit grey value.  Gets scaled to 0-paletteSize.
 // @param paletteSize   The number of greys in the palette.
-uint8_t grey82ansi(uint8_t grey8, uint8_t paletteSize) {
+uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize) {
     const uint8_t MAX_GREYS = 26, MIN_GREYS = 2;
-    const uint8_t ANSIGREYS[MAX_GREYS] = { 16, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 
+    const uint8_t ANSIGREYS[MAX_GREYS] = { 17, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 
                                            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 231 };
     uint8_t scaled = 0;
 
@@ -245,7 +310,91 @@ uint8_t grey82ansi(uint8_t grey8, uint8_t paletteSize) {
         return ANSIGREYS[scaled];
     }
 
-    //int greyIdx = (scaled * (MAX_GREYS - 1)) / (paletteSize - 1);
-    int greyIdx = mapVal(scaled, 0, paletteSize - 1, 0, MAX_GREYS - 1);
+    int greyIdx = (scaled * (MAX_GREYS - 1)) / (paletteSize - 1);
     return ANSIGREYS[greyIdx]; 
+}
+
+int max3(int a, int b, int c) {
+  if (a > b && a > c ) { return a; }
+  if (b > a && b > c ) { return b; }
+  return c;
+}
+
+int min3(int a, int b, int c) {
+  if (a < b && a < c ) { return a; }
+  if (b < a && b < c ) { return b; }
+  return c;
+}
+
+// http://stackoverflow.com/questions/2353211/hsl-to-rgb-color-conversion
+// http://stackoverflow.com/questions/3018313/algorithm-to-convert-rgb-to-hsv-and-hsv-to-rgb-in-range-0-255-for-both
+// returns saturation in range 0-255 (instead of 0 - 1.0
+uint8_t getSaturation(uint8_t r, uint8_t g, uint8_t b) {
+  uint8_t min, max, delta, s;
+
+  min = min3(r, g, b);
+  max = max3(r, g, b);
+
+  if (max != 0) {
+    delta = max - min;
+    s = long(delta) * 255 / max;
+  } else {
+    s = 0;
+  }
+
+  return s;
+}
+
+// converts an RGB pixel to luminosity / grey
+// ITU-R Recommendation BT. 709: Y = 0.2126 R + 0.7152 G + 0.0722 B
+uint8_t luma(uint8_t r, uint8_t g, uint8_t b) {
+  float y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (uint8_t) y;
+}
+
+//uint8_t rgb2ansi(uint8_t red, uint8_t green, uint8_t blue) {
+uint8_t rgb2ansi(cv::Vec3b pixel) {
+
+  uint8_t small, big, s1, b1, colorComponent, idx;
+  uint8_t ri, gi, bi;
+
+  uint8_t red, green, blue;
+            blue  = pixel[0];
+            green = pixel[1];
+            red   = pixel[2];
+
+  // For pixels close to grey (low saturation) use a palette index from the greyscale ramp
+  uint8_t saturation = getSaturation(red, green, blue);
+  if (saturation <= 24) {
+    uint8_t luminosity = luma(red, green, blue);
+    return grey2ansi(luminosity);
+  }
+
+  for (int c = 2; c >= 0; c--) {
+//    colorComponent = (number >> (c * 8)) & 0xFF;
+    colorComponent = c == 2 ? red : c == 1 ? green : blue;
+    for (int i = 0; i < 5; i++) {
+      small = INCS[i];
+      big = INCS[i+1];
+      if (colorComponent >= small && colorComponent <= big) {
+        s1 = abs(small - colorComponent);
+        b1 = abs(big - colorComponent);
+        if (s1 < b1) {
+          idx = i;
+        } else {
+          idx = i + 1;
+        }
+        if (c==2) {
+          ri = idx;
+        }else if (c==1) {
+          gi = idx;
+        } else {
+          bi = idx;
+        }
+        break;
+      }
+    }
+  }
+
+  return CLUT[gi][ri][bi];
 }
