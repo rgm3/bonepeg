@@ -10,7 +10,7 @@ A re-implementation of the method used in [Video Peggy in action] [4] without th
    [2]: http://en.wikipedia.org/wiki/I%C2%B2C
    [3]: http://beagleboard.org/Products/BeagleBone%20Black
    [4]: http://www.evilmadscientist.com/2009/video-peggy-in-action/
-   [5]: http://ascii.io/a/3904
+   [5]: http://asciinema.org/a/3904
 
 Building
 ========
