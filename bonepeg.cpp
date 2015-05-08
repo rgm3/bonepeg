@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <locale.h>
+#include <time.h>
 #include <ncurses.h>
 
 // Capture size from camera
@@ -44,6 +45,7 @@ void fillColorLookupTable();
 void printImage(Mat);
 void restoreTerminal();
 void readKeys();
+void screenshot();
 uint8_t grey2ansi(uint8_t grey8);
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
 uint8_t rgb2ansi(cv::Vec3b);
@@ -57,11 +59,11 @@ bool g_mirror = true;
 volatile sig_atomic_t gStop = 0;
 volatile sig_atomic_t gTermResized = 0;
 
-void handle_interrupt(int sig) {
+void sigint_handler(int sig) {
     gStop = 1;
 }
 
-void handle_winch(int sig)
+void sigwinch_handler(int sig)
 {
     gTermResized = 1;
 }
@@ -77,16 +79,15 @@ int main(int argc, char** argv)
 
     // Trap CTRL-c
     struct sigaction sigIntHandler;
-    sigIntHandler.sa_handler = handle_interrupt;
+    sigIntHandler.sa_handler = sigint_handler;
     sigemptyset(&sigIntHandler.sa_mask);
     sigIntHandler.sa_flags = 0;
     sigaction(SIGINT, &sigIntHandler, NULL);
 
     // Handle window resize
     struct sigaction sa;
-    // memset(&sa, 0, sizeof(struct sigaction));
-    sa.sa_handler = handle_winch;
-    sigemptyset(&sa.sa_mask);
+     memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sigwinch_handler;
     sa.sa_flags = 0;
     sigaction(SIGWINCH, &sa, NULL);
 
@@ -128,8 +129,14 @@ int main(int argc, char** argv)
     getmaxyx(stdscr,trows,tcols);
     Size termSize  = Size(tcols, trows);
     Size peggySize = Size(25, 25);
+    
+    // 13pt Monaco        = 8x18 = 4:9  = .444
+    // 12pt Monaco        = 7x17 = 7:17 = .412
+    // 11pt Monaco        = 7x15 = 7:15 = .467
+    // 10pt Monaco        = 6x14 = 3:7  = .429
+    // 12pt Menlo regular = 7x14 = 1:2  = .500
 
-    float char_aspect = 4.0f / 9; // 12pt Monaco blocks are 4:9 (.44) or maybe 7:17 (.41)
+    float char_aspect = 4.0f / 9; 
     int effective_trows = (1.0f / char_aspect) * trows;
     float term_aspect = (float) tcols / effective_trows;
     float cam_aspect = (float) CAM_WIDTH / CAM_HEIGHT;
@@ -163,6 +170,7 @@ int main(int argc, char** argv)
     Rect cropArea(x, y, cropwidth, cropheight);
 
     cbreak();              // Don't buffer until newline
+    keypad(stdscr, true);  // Accept non-typewriter keys like left, right, up, down, F1
     noecho();              // Don't echo inputs to screen
     curs_set(0);           // turn off cursor
     nodelay(stdscr, true); // don't wait on key inputs
@@ -226,8 +234,10 @@ void readKeys() {
       break;
     case 'q':
     case 27: // ESC
-      handle_interrupt(SIGINT);
+      sigint_handler(SIGINT);
       break;
+    case ' ': // space
+      screenshot();
     default:
       ;
   }
@@ -263,7 +273,8 @@ void printImage(Mat thumb) {
 
             attron(COLOR_PAIR(paletteIdx));
             mvprintw(i, j, " ");
-            attroff(COLOR_PAIR(paletteIdx));
+            attrset(A_NORMAL);
+            //attroff(COLOR_PAIR(paletteIdx));
         }
     }
 }
@@ -403,4 +414,21 @@ uint8_t rgb2ansi(cv::Vec3b pixel) {
   }
 
   return CLUT[gi][ri][bi];
+}
+
+void screenshot() {
+  char filename[128];
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+
+  strftime(filename, sizeof(filename) - 1, "snapterm-%F %H.%M.%S.win", t);
+
+  if ( scr_dump(filename) == ERR ) {
+    //TODO handle ERR / OK / user feedback
+  }
+
+  // scr_dump output only readable by scr_restore, basically useless.
+  // It'd be better to dump the control codes so you could view the "image" with "cat screenshot.txt"
+  // Need to figure out how to do that.
+  // Alternately, figure out how to dump a .png through OpenCV, but then I'd need to give OpenCV my terminal palette and character aspect ratio.
 }
