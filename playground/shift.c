@@ -1,5 +1,5 @@
 /* Print out color pairs
- * gcc -std=c99 -lncurses -ltinfo pairs.c
+ * gcc -std=c99 -lncurses shift.c
  * Experiment in palette restoration.
  */
 

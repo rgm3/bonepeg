@@ -1,8 +1,9 @@
 CC=gcc
 CFLAGS=
-LIBS=-lncurses -ltinfo
+#LIBS=-lncurses -ltinfo
+LIBS=-lncurses
 DEPS=
-PROGS=ncurses_test nccolor greyramp hex2pal ttycolors shift
+PROGS=ncurses_test nccolor greyramp hex2pal ttycolors shift colortrans
 
 %.o: %.c $(DEPS)
 		$(CC) -c -o $@ $< $(CFLAGS)
@@ -26,6 +27,9 @@ hex2pal: hex2pal.c
 
 ttycolors: ttycolors.c
 	$(CC) -o $@ $^ $(LIBS) $(CFLAGS)
+
+colortrans: colortrans.c
+	$(CC) -o $@ $^ $(CFLAGS)
 
 clean:
 #	rm -f *.o *~ core

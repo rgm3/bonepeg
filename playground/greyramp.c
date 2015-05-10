@@ -1,5 +1,5 @@
-/* Print out color pairs
- * gcc -std=c99 -lncurses -ltinfo pairs.c
+/* Print out grey ramp
+ * gcc -std=c99 -lncurses greyramp.c
  */
 
 #include <stdlib.h>
