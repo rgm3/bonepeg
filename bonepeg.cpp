@@ -53,6 +53,7 @@ uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
 uint8_t rgb2ansi(cv::Vec3b*);
 
 // Globals
+const uint8_t MAX_GREYS = 26, MIN_GREYS = 2;
 uint8_t INCS[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
 uint8_t CLUT[6][6][6]; // color lookup table
 uint8_t GREYS[24];
@@ -293,31 +294,32 @@ void printImage(Mat thumb) {
 
 // Converts an 8-bit greyscale value to one of the 26 ANSI grey levels.
 uint8_t grey2ansi(uint8_t grey8) {
-    return grey2ansi(grey8, 26);
+    return grey2ansi(grey8, MAX_GREYS);
 }
 
-// Returns the best ANSI color code for the given 8-bit grey value, within the
-// size of the palette.  26 ANSI grey levels are available, including black and white.
-// color index 16 = black, 231 = white, 232 - 255 dark (#080808) to light (#EEEEEE) ramp 
-//
-// Note: the 256 colors in the palette could be redefined.
-//
-// @param grey8         an 8-bit grey value.  Gets scaled to 0-paletteSize.
-// @param paletteSize   The number of greys in the palette.
-uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize) {
-    const uint8_t MAX_GREYS = 26, MIN_GREYS = 2;
+/**
+ * Returns the best ANSI color code for the given 8-bit grey value, scaled to a given number of levels.
+ * 26 grey levels are available in the default ANSI 256 palette, including black and white.
+ * color index 16 = black, 231 = white, 232 - 255 dark (#080808) to light (#EEEEEE) ramp 
+ *
+ * Note: the 256 colors in the palette could be redefined.
+ *
+ * @param grey8        an 8-bit grey value.  Gets scaled to [0..greyLevels]
+ * @param greyLevels   The number of grey levels desired. Range: [2..26]
+ */
+uint8_t grey2ansi(uint8_t grey8, uint8_t greyLevels) {
     const uint8_t ANSIGREYS[MAX_GREYS] = { 16, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 
                                            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 231 };
     uint8_t scaled = 0;
 
     // bounds check
-    if (paletteSize > MAX_GREYS) { paletteSize = MAX_GREYS; }
-    if (paletteSize < MIN_GREYS) { paletteSize = MIN_GREYS; }
+    if (greyLevels > MAX_GREYS) { greyLevels = MAX_GREYS; }
+    if (greyLevels < MIN_GREYS) { greyLevels = MIN_GREYS; }
 
     // if the paletteSize is a power of two [2,4,8,16] we can shift for scale
     // generic power of two test: paletteSize & (paletteSize - 1)) == 0)
     // Just hard-code the four supported
-    switch(paletteSize) {
+    switch(greyLevels) {
         case 16:
             scaled = grey8 >> 4; // 0-15
             break;
@@ -331,15 +333,15 @@ uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize) {
             scaled = grey8 >> 7; // 0-1, black or white
             break;
         default:
-            scaled = (int)((grey8 * paletteSize) / (255 + 1)); // 0-(paletteSize-1)
+            scaled = (int)((grey8 * greyLevels) / (255 + 1)); // 0-(paletteSize-1)
     }
 
     // If using max greys in palette, the scaled value is equal to the index of the ansi grey color
-    if (paletteSize == MAX_GREYS) {
+    if (greyLevels == MAX_GREYS) {
         return ANSIGREYS[scaled];
     }
 
-    int greyIdx = (scaled * (MAX_GREYS - 1)) / (paletteSize - 1);
+    int greyIdx = (scaled * (MAX_GREYS - 1)) / (greyLevels - 1);
     return ANSIGREYS[greyIdx]; 
 }
 
