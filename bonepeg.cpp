@@ -196,9 +196,9 @@ refresh();
 */
 
         // shrink to terminal size (squishes the vertical by character aspect ratio)
-        Mat blurred = cropped.clone();
-        GaussianBlur( cropped, blurred, Size(3,3), 0, 0 );
-        resize(blurred, thumb, termSize, 0, 0, INTER_LINEAR);
+       // Mat blurred = cropped.clone();
+        //GaussianBlur( cropped, blurred, Size(3,3), 0, 0 );
+        resize(cropped, thumb, termSize, 0, 0, INTER_LINEAR);
 
         printImage(thumb);
 
