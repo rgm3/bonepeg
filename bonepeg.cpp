@@ -46,6 +46,7 @@ void printImage(Mat);
 void restoreTerminal();
 void readKeys();
 void screenshot();
+void setupSignalHandlers();
 uint8_t luma(uint8_t, uint8_t, uint8_t);
 uint8_t grey2ansi(uint8_t grey8);
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
@@ -79,19 +80,7 @@ void restoreTerminal() {
 int main(int argc, char** argv)
 {
 
-    // Trap CTRL-c
-    struct sigaction sigIntHandler;
-    sigIntHandler.sa_handler = sigint_handler;
-    sigemptyset(&sigIntHandler.sa_mask);
-    sigIntHandler.sa_flags = 0;
-    sigaction(SIGINT, &sigIntHandler, NULL);
-
-    // Handle window resize
-    struct sigaction sa;
-     memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = sigwinch_handler;
-    sa.sa_flags = 0;
-    sigaction(SIGWINCH, &sa, NULL);
+    setupSignalHandlers();
 
     // set locale
     if (!setlocale(LC_CTYPE, "")) {
@@ -223,6 +212,22 @@ refresh();
     restoreTerminal();
 
     return 0;
+}
+
+void setupSignalHandlers() {
+    // Trap SIGINT / CTRL-c
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = sigint_handler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
+
+    // Trap SIGWINCH / Handle window resize
+    struct sigaction sa;
+     memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sigwinch_handler;
+    sa.sa_flags = 0;
+    sigaction(SIGWINCH, &sa, NULL);
 }
 
 void readKeys() {
