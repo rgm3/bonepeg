@@ -46,15 +46,17 @@ void printImage(Mat);
 void restoreTerminal();
 void readKeys();
 void screenshot();
+uint8_t luma(uint8_t, uint8_t, uint8_t);
 uint8_t grey2ansi(uint8_t grey8);
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
-uint8_t rgb2ansi(cv::Vec3b);
+uint8_t rgb2ansi(cv::Vec3b*);
 
 // Globals
 uint8_t INCS[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
 uint8_t CLUT[6][6][6]; // color lookup table
 uint8_t GREYS[24];
 bool g_mirror = true;
+bool g_color = true;
 
 volatile sig_atomic_t gStop = 0;
 volatile sig_atomic_t gTermResized = 0;
@@ -176,7 +178,7 @@ int main(int argc, char** argv)
     nodelay(stdscr, true); // don't wait on key inputs
 
     for (int i = 0; i < COLORS; i++){
-      init_pair(i + 1, -1, i);
+      init_pair(i, -1, i);
     }
 
     refresh();
@@ -232,6 +234,9 @@ void readKeys() {
     case 'm':
       g_mirror = !g_mirror;
       break;
+    case 'c':
+      g_color = !g_color;
+      break;
     case 'q':
     case 27: // ESC
       sigint_handler(SIGINT);
@@ -244,10 +249,11 @@ void readKeys() {
 }
 
 void fillColorLookupTable() {
+  int paletteIdx;
   for (int green = 0; green < 6; green++) {
     for (int red = 0; red < 6; red++) {
       for (int blue = 0; blue < 6; blue++) {
-        int paletteIdx = 16 + (red * 36) + (green * 6) + blue;
+        paletteIdx = 16 + (red * 36) + (green * 6) + blue;
         CLUT[green][red][blue] = paletteIdx;
       }
     }
@@ -260,21 +266,22 @@ void printImage(Mat thumb) {
             rows = thumb.rows,
             cols = thumb.cols;
 
-    for(int i = 0; i < rows; i++ ) {
-        for(int j = 0; j < cols; j++ ) {
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
 
             int column = g_mirror ? cols - 1 - j : j;
 
-            paletteIdx = rgb2ansi(thumb.at<cv::Vec3b>(i,column));
-
-            if ( paletteIdx < 254 ) {
-              paletteIdx++;  // fixme: off-by-one error setting up color pairs?
+            if (g_color) {
+              paletteIdx = rgb2ansi(&thumb.at<cv::Vec3b>(i,column));
+            } else {
+              //greyscale
+              Vec3b pixel = thumb.at<cv::Vec3b>(i,column);
+              paletteIdx = grey2ansi(luma(pixel[2], pixel[1], pixel[0]));
             }
 
             attron(COLOR_PAIR(paletteIdx));
             mvprintw(i, j, " ");
             attrset(A_NORMAL);
-            //attroff(COLOR_PAIR(paletteIdx));
         }
     }
 }
@@ -294,7 +301,7 @@ uint8_t grey2ansi(uint8_t grey8) {
 // @param paletteSize   The number of greys in the palette.
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize) {
     const uint8_t MAX_GREYS = 26, MIN_GREYS = 2;
-    const uint8_t ANSIGREYS[MAX_GREYS] = { 17, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 
+    const uint8_t ANSIGREYS[MAX_GREYS] = { 16, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 
                                            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 231 };
     uint8_t scaled = 0;
 
@@ -370,15 +377,15 @@ uint8_t luma(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 //uint8_t rgb2ansi(uint8_t red, uint8_t green, uint8_t blue) {
-uint8_t rgb2ansi(cv::Vec3b pixel) {
+uint8_t rgb2ansi(cv::Vec3b *pixel) {
 
   uint8_t small, big, s1, b1, colorComponent, idx;
   uint8_t ri, gi, bi;
 
   uint8_t red, green, blue;
-            blue  = pixel[0];
-            green = pixel[1];
-            red   = pixel[2];
+            blue  = (*pixel)[0];
+            green = (*pixel)[1];
+            red   = (*pixel)[2];
 
   // For pixels close to grey (low saturation) use a palette index from the greyscale ramp
   uint8_t saturation = getSaturation(red, green, blue);
