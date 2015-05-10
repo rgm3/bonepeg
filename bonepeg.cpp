@@ -58,16 +58,16 @@ uint8_t GREYS[24];
 bool g_mirror = true;
 bool g_color = true;
 
-volatile sig_atomic_t gStop = 0;
-volatile sig_atomic_t gTermResized = 0;
+volatile sig_atomic_t g_stop = 0;
+volatile sig_atomic_t g_termResized = 0;
 
 void sigint_handler(int sig) {
-    gStop = 1;
+    g_stop = 1;
 }
 
 void sigwinch_handler(int sig)
 {
-    gTermResized = 1;
+    g_termResized = 1;
 }
 
 void restoreTerminal() {
@@ -165,7 +165,7 @@ int main(int argc, char** argv)
     printw("Cropping %dx%d at (%d,%d). aspect = %f", cropwidth, cropheight, x, y, term_aspect);
     refresh();
     getch();
-    //gStop = true;
+    //g_stop = true;
 */
 
     // What is this constructor and variable asignment magic
@@ -189,7 +189,7 @@ int main(int argc, char** argv)
 
     Mat thumb = Mat(termSize.width, termSize.height, CV_8UC3);
     Mat frame, cropped;
-    while (!gStop) {
+    while (!g_stop) {
         // capture frame from camera or bail
         capture >> frame;
 
