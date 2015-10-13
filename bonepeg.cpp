@@ -32,8 +32,8 @@
 #include <ncurses.h>
 
 // Capture size from camera
-#define CAM_WIDTH 800
-#define CAM_HEIGHT 600
+#define CAM_WIDTH 1280
+#define CAM_HEIGHT 720
 
 #undef max
 #undef min
