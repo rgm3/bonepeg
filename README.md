@@ -43,3 +43,9 @@ To display all available v4l2 information:
 Formats that the device can provide:
    # v4l2-ctl --list-formats
 
+Terminal chromophilia
+=====================
+Ask your doctor if these are right for you:
+*  http://xyne.archlinux.ca/projects/tiv/
+*  https://github.com/busyloop/lolcat/
+*  https://asciinema.org/
