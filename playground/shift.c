@@ -1,6 +1,7 @@
 /* Print out color pairs
  * gcc -std=c99 -lncurses shift.c
- * Experiment in palette restoration.
+ * Experiment in palette redefinition and restoration.
+ * Really screws up your color scheme good.
  */
 
 #include <stdlib.h>
@@ -84,10 +85,12 @@ int main(int argc, char **argv) {
     exit(1);
   }
   if(!has_colors()) {
+    endwin();
     printf("This terminal does not support colours.\n");
     exit(1);
   }
-  if(!can_change_color()) {
+  if(can_change_color() == FALSE) {
+    endwin();
     printf("This terminal does not support redefining colours.\n");
     exit(1);
   }
