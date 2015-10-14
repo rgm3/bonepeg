@@ -26,10 +26,12 @@
 #include <opencv2/opencv.hpp>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <locale.h>
 #include <time.h>
 #include <sys/time.h>
 #include <ncurses.h>
+#include "colorhelpers.hpp"
 
 // Capture size from camera
 #define CAM_WIDTH 1280
@@ -48,8 +50,6 @@ void restoreTerminal();
 void readKeys();
 void screenshot();
 void setupSignalHandlers();
-uint8_t luma(uint8_t, uint8_t, uint8_t);
-uint8_t getSaturation(uint8_t, uint8_t, uint8_t);
 uint8_t grey2ansi(uint8_t grey8);
 uint8_t grey2ansi(uint8_t grey8, uint8_t paletteSize);
 uint8_t rgb2ansi(cv::Vec3b);
@@ -69,7 +69,7 @@ struct rgb { uint8_t r; uint8_t g; uint8_t b; };
 bool g_mirror = true;
 bool g_color = true;
 volatile bool g_fps = false;
-uint8_t g_saturation_threshold = 64; // Trade color for details when low saturation
+uint8_t g_saturation_threshold = 32; // Values below this threshold will be shown in greyscale.  There's more detail in the grey.
 
 volatile sig_atomic_t g_stop = 0;
 volatile sig_atomic_t g_termResized = 0;
@@ -94,8 +94,8 @@ void restoreTerminal() {
 uint8_t rgb_to_idx(cv::Vec3b c) {
    uint8_t r = 5, g = 5, b = 5;
 
-  uint8_t saturation = getSaturation(c[2], c[1], c[0]);
-  if (saturation <= g_saturation_threshold) {
+  uint8_t sat = saturation(c[2], c[1], c[0]);
+  if (sat <= g_saturation_threshold) {
     uint8_t luminosity = luma(c[2], c[1], c[0]);
     return grey2ansi(luminosity);
   }
@@ -239,7 +239,6 @@ int main(int argc, char** argv) {
     // What is this constructor and variable asignment magic
     Rect cropArea(x_offset, y_offset, cropwidth, cropheight);
     Size termSize  = Size(tcols, trows);
-    Size peggySize = Size(25, 25);
     Mat thumb = Mat(termSize.width, termSize.height, CV_8UC3);
     Mat frame, cropped;
     while (!g_stop) {
@@ -444,43 +443,6 @@ const uint8_t ANSIGREYS[MAX_GREYS] = { 16, 232, 233, 234, 235, 236, 237, 238, 23
     return ANSIGREYS[greyIdx]; 
 }
 
-int max3(int a, int b, int c) {
-  if (a > b && a > c ) { return a; }
-  if (b > a && b > c ) { return b; }
-  return c;
-}
-
-int min3(int a, int b, int c) {
-  if (a < b && a < c ) { return a; }
-  if (b < a && b < c ) { return b; }
-  return c;
-}
-
-// http://stackoverflow.com/questions/2353211/hsl-to-rgb-color-conversion
-// http://stackoverflow.com/questions/3018313/algorithm-to-convert-rgb-to-hsv-and-hsv-to-rgb-in-range-0-255-for-both
-// returns saturation in range 0-255 (instead of 0 - 1.0)
-uint8_t getSaturation(uint8_t r, uint8_t g, uint8_t b) {
-  uint8_t min, max, delta, s;
-
-  min = min3(r, g, b);
-  max = max3(r, g, b);
-
-  if (max != 0) {
-    delta = max - min;
-    s = long(delta) * 255 / max;
-  } else {
-    s = 0;
-  }
-
-  return s;
-}
-
-// converts an RGB pixel to luminosity / grey
-// ITU-R Recommendation BT. 709: Y = 0.2126 R + 0.7152 G + 0.0722 B
-uint8_t luma(uint8_t r, uint8_t g, uint8_t b) {
-  float y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return (uint8_t) y;
-}
 
 //uint8_t rgb2ansi(uint8_t red, uint8_t green, uint8_t blue) {
 uint8_t rgb2ansi(cv::Vec3b pixel) {
@@ -494,8 +456,8 @@ uint8_t rgb2ansi(cv::Vec3b pixel) {
             red   = pixel[2];
 
   // For pixels close to grey (low saturation) use a palette index from the greyscale ramp
-  uint8_t saturation = getSaturation(red, green, blue);
-  if (saturation <= g_saturation_threshold) {
+  uint8_t sat = saturation(red, green, blue);
+  if (sat <= g_saturation_threshold) {
     uint8_t luminosity = luma(red, green, blue);
     return grey2ansi(luminosity);
   }
