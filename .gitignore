@@ -1,7 +1,21 @@
-# compiled sources
+# Compiled object files
 *.o
 
-# binaries
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+*sublime-*
+
+# Binaries
 bonepeg
 playground/colortrans
 playground/greyramp
@@ -11,3 +25,4 @@ playground/ncurses_test
 playground/shift
 playground/sliders
 playground/ttycolors
+
