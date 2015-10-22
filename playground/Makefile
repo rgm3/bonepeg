@@ -29,7 +29,7 @@ ttycolors: ttycolors.c
 	$(CC) -o $@ $^ $(LIBS) $(CFLAGS)
 
 colortrans: colortrans.c
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -std=c99 -o $@ $^ $(CFLAGS)
 
 clean:
 #	rm -f *.o *~ core
