@@ -32,8 +32,8 @@
 #include <ncurses.h>
 
 // Capture size from camera
-#define CAM_WIDTH 1280
-#define CAM_HEIGHT 720
+#define CAM_WIDTH 640
+#define CAM_HEIGHT 480
 
 #undef max
 #undef min
@@ -141,9 +141,9 @@ int main(int argc, char** argv) {
     // prints "VIDIOC_QUERYMENU: Invalid argument" on stderr a few times with this OpenCV, but works fine
     // Seems to be an issue with OpenCV querying device capabilities
     VideoCapture capture(0);
-    capture.set(CAP_PROP_FRAME_WIDTH, CAM_WIDTH);
-    capture.set(CAP_PROP_FRAME_HEIGHT, CAM_HEIGHT);
-    Size capRes = Size(capture.get(CAP_PROP_FRAME_WIDTH), capture.get(CAP_PROP_FRAME_HEIGHT));
+    capture.set(CV_CAP_PROP_FRAME_WIDTH, CAM_WIDTH);
+    capture.set(CV_CAP_PROP_FRAME_HEIGHT, CAM_HEIGHT);
+    Size capRes = Size(capture.get(CV_CAP_PROP_FRAME_WIDTH), capture.get(CV_CAP_PROP_FRAME_HEIGHT));
 
     if (!(capRes.width == CAM_WIDTH && capRes.height == CAM_HEIGHT)) {
         fprintf(stderr, "Capture resolution %dx%d not available.\nCapture opened at %dx%d.\n", CAM_WIDTH, CAM_HEIGHT, capRes.width, capRes.height);
@@ -154,8 +154,8 @@ int main(int argc, char** argv) {
         cerr << "Failed to connect to the camera." << endl;
         return -1;
     } else {
-        cout << "Video source is " << capture.get(CAP_PROP_FRAME_WIDTH) <<
-          "x" << capture.get(CAP_PROP_FRAME_HEIGHT) << endl;
+        cout << "Video source is " << capture.get(CV_CAP_PROP_FRAME_WIDTH) <<
+          "x" << capture.get(CV_CAP_PROP_FRAME_HEIGHT) << endl;
     }
 
     initscr();
