@@ -1,3 +1,5 @@
+*.o
+
 bonepeg
 playground/colortrans
 playground/greyramp
